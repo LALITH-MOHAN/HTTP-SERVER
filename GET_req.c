@@ -98,7 +98,7 @@ void send_file(int client_fd, char *filepath)
 
 void send_404(int client_fd)
 {
-    char *msg = "NOT FOUND";
+    char *msg = "ERROR 404 NOT FOUND";
     send_response(client_fd, 404, "NOT FOUND", "text/plain", msg, strlen(msg));
 }
 
