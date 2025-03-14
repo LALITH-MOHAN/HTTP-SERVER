@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include<fcntl.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 8192
@@ -20,6 +21,7 @@ void handle_upload(int client_fd, char *request);
 void send_response(int client_fd, int status_code, const char *status_msg, const char *content_type, const char *content, int content_length);
 void send_404(int client_fd);
 void send_file(int client_fd, const char *filepath);
+void set_nonblock(int fd);
 
 int main() 
 {
@@ -79,10 +81,12 @@ int main()
                     perror("Accept failed");
                     continue;
                 }
+                set_nonblock(client_fd);
                 ev.events = EPOLLIN;
                 ev.data.fd = client_fd;
                 epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &ev);
-            } else 
+            } 
+            else 
             {
                 handle_client(events[i].data.fd);
                 close(events[i].data.fd);
@@ -162,8 +166,9 @@ void handle_upload(int client_fd, char *request)
     if (bytes_read <= 0) return;
     buffer[bytes_read] = '\0';
 
-    char *filename_start = strstr(buffer, "filename=\"");
-    if (!filename_start) {
+    char *filename_start = strstr(buffer, "filename=");
+    if (!filename_start) 
+    {
         send_response(client_fd, 400, "Bad Request", "text/plain", "No filename found", 16);
         return;
     }
@@ -173,25 +178,27 @@ void handle_upload(int client_fd, char *request)
     *filename_end = '\0';
 
     snprintf(filepath, sizeof(filepath), "%s/%s", UPLOAD_DIR, filename_start);
-    mkdir(UPLOAD_DIR, 0755);
-
+   
     char *file_data = strstr(filename_end + 1, "\r\n\r\n");
-    if (!file_data) {
+    if (!file_data) 
+    {
         send_response(client_fd, 400, "Bad Request", "text/plain", "Invalid file format", 19);
         return;
     }
     file_data += 4;
 
     char *end_boundary = strstr(file_data, "\r\n--");
-    if (!end_boundary) {
+    if (!end_boundary) 
+    {
         send_response(client_fd, 400, "Bad Request", "text/plain", "Boundary not found", 18);
         return;
     }
 
-    ssize_t content_length = end_boundary - file_data;
+    int content_length = end_boundary - file_data;
 
     uploaded_file = fopen(filepath, "wb");
-    if (!uploaded_file) {
+    if (!uploaded_file) 
+    {
         send_response(client_fd, 500, "Internal Server Error", "text/plain", "File write error", 16);
         return;
     }
@@ -211,7 +218,8 @@ void send_404(int client_fd)
 void send_file(int client_fd, const char *filepath) 
 {
     FILE *file = fopen(filepath, "rb");
-    if (!file) {
+    if (!file) 
+    {
         send_404(client_fd);
         return;
     }
@@ -232,10 +240,9 @@ if (ext)
     if (strcmp(ext, ".html") == 0) content_type = "text/html";
     else if (strcmp(ext, ".htm") == 0) content_type = "text/html";
     else if (strcmp(ext, ".txt") == 0) content_type = "text/plain";
-    else if (strcmp(ext, ".pdf") == 0) content_type = "application/pdf";
 }
 
-// Send the response with the correct Content-Type
+
       send_response(client_fd, 200, "OK", content_type, file_content, file_size);
 
     free(file_content);
@@ -252,6 +259,12 @@ void send_response(int client_fd, int status_code, const char *status_msg, const
              "\r\n",
              status_code, status_msg, content_type, content_length);
 
-    send(client_fd, response_header, strlen(response_header), 0);
+    send(client_fd, response_header, strlen(response_header), 0); 
     send(client_fd, content, content_length, 0);
+}
+
+void set_nonblock(int fd)
+{
+    int flags=fcntl(fd,F_GETFL,0);
+    fcntl(fd,F_SETFL,O_NONBLOCK|flags);
 }
